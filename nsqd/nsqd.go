@@ -46,9 +46,10 @@ type NSQD struct {
 	// ctxCancel cancels a context that main() is waiting on
 	ctxCancel context.CancelFunc
 
+	// 存储options信息
 	opts atomic.Value
 
-	dl        *dirlock.DirLock
+	dl        *dirlock.DirLock // 目录锁
 	isLoading int32
 	isExiting int32
 	errValue  atomic.Value
@@ -77,23 +78,27 @@ type NSQD struct {
 func New(opts *Options) (*NSQD, error) {
 	var err error
 
+	// 数据存储路径
 	dataPath := opts.DataPath
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
 		dataPath = cwd
 	}
+	// 初始化logger
 	if opts.Logger == nil {
 		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
 
+	// 初始化时指定必要参数
 	n := &NSQD{
 		startTime:            time.Now(),
-		topicMap:             make(map[string]*Topic),
-		exitChan:             make(chan int),
-		notifyChan:           make(chan interface{}),
+		topicMap:             make(map[string]*Topic), // topic 存储map
+		exitChan:             make(chan int),          // 退出信号
+		notifyChan:           make(chan interface{}),  // 通知信号
 		optsNotificationChan: make(chan struct{}, 1),
 		dl:                   dirlock.New(dataPath),
 	}
+	// 创建context
 	n.ctx, n.ctxCancel = context.WithCancel(context.Background())
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
@@ -102,7 +107,7 @@ func New(opts *Options) (*NSQD, error) {
 
 	n.swapOpts(opts)
 	n.errValue.Store(errStore{})
-
+	// 验证dataPath目录是否被占用
 	err = n.dl.Lock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock data-path: %v", err)
@@ -137,18 +142,21 @@ func New(opts *Options) (*NSQD, error) {
 
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
-
+	// 创建tcp server
 	n.tcpServer = &tcpServer{nsqd: n}
+	// tcp listener
 	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
 	}
+	// 创建http listener
 	if opts.HTTPAddress != "" {
 		n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
 		}
 	}
+	// 创建https listener
 	if n.tlsConfig != nil && opts.HTTPSAddress != "" {
 		n.httpsListener, err = tls.Listen("tcp", opts.HTTPSAddress, n.tlsConfig)
 		if err != nil {
@@ -251,6 +259,7 @@ func (n *NSQD) Main() error {
 	}
 
 	n.waitGroup.Wrap(func() {
+		// 创建tcp server，里面是个死循环
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
 	if n.httpListener != nil {

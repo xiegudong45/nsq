@@ -14,12 +14,14 @@ type TCPHandler interface {
 	Handle(net.Conn)
 }
 
+// 创建tcp server
 func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) error {
 	logf(lg.INFO, "TCP: listening on %s", listener.Addr())
 
 	var wg sync.WaitGroup
 
 	for {
+		// 等待客户端连接，会阻塞
 		clientConn, err := listener.Accept()
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
@@ -27,14 +29,15 @@ func TCPServer(listener net.Listener, handler TCPHandler, logf lg.AppLogFunc) er
 				runtime.Gosched()
 				continue
 			}
-			// theres no direct way to detect this error because it is not exposed
+			// there's no direct way to detect this error because it is not exposed
 			if !strings.Contains(err.Error(), "use of closed network connection") {
 				return fmt.Errorf("listener.Accept() error - %s", err)
 			}
 			break
 		}
-
+		// 连接已经建立
 		wg.Add(1)
+		// 开启一个goroutine，处理这个连接的数据I/O
 		go func() {
 			handler.Handle(clientConn)
 			wg.Done()

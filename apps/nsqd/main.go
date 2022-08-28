@@ -31,18 +31,22 @@ func main() {
 }
 
 func (p *program) Init(env svc.Environment) error {
+	// 设置默认值
 	opts := nsqd.NewOptions()
 
-	flagSet := nsqdFlagSet(opts)
-	flagSet.Parse(os.Args[1:])
+	// 解析命令行参数
+	flagSet := nsqdFlagSet(opts) // 命令行参数先设置默认值
+	flagSet.Parse(os.Args[1:])   // 解析用户传入的命令行参数，覆盖默认值
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
+	// 启动命令带上了 version，只打印版本号然后退出启动程序
 	if flagSet.Lookup("version").Value.(flag.Getter).Get().(bool) {
 		fmt.Println(version.String("nsqd"))
 		os.Exit(0)
 	}
 
+	// 读取配置文件
 	var cfg config
 	configFile := flagSet.Lookup("config").Value.String()
 	if configFile != "" {
@@ -52,9 +56,10 @@ func (p *program) Init(env svc.Environment) error {
 		}
 	}
 	cfg.Validate()
-
+	// 将配置文件及命令行参数都解析到options里
 	options.Resolve(opts, flagSet, cfg)
 
+	// 创建nsqd实例
 	nsqd, err := nsqd.New(opts)
 	if err != nil {
 		logFatal("failed to instantiate nsqd - %s", err)

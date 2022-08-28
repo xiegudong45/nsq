@@ -92,6 +92,7 @@ func NewOptions() *Options {
 		log.Fatal(err)
 	}
 
+	// 对主机名称进行md5加密
 	h := md5.New()
 	io.WriteString(h, hostname)
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
